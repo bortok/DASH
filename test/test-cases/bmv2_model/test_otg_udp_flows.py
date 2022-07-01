@@ -1,8 +1,9 @@
 import snappi
 
 
-def test_udp_unidirectional():
+def test_udp_bidirectional():
     """
+    TODO update description
     This script does following:
     - Send 1000 packets from one port to another at a rate of
       1000 packets per second.
@@ -18,14 +19,8 @@ def test_udp_unidirectional():
         name="p2", location="localhost:5556"
     )
 
-    # add layer 1 property to configure same speed on both ports
-    ly = cfg.layer1.layer1(name="ly")[-1]
-    ly.port_names = [p1.name, p2.name]
-    ly.speed = ly.SPEED_1_GBPS
-
-
     # add two traffic flows
-    f1, f2 = cfg.flows.flow(name="flow p1->p2").flow(name="flow p2->p1")
+    f1, f2 = cfg.flows.flow(name="p1->p2").flow(name="p2->p1")
     # and assign source and destination ports for each
     f1.tx_rx.port.tx_name, f1.tx_rx.port.rx_name = p1.name, p2.name
     f2.tx_rx.port.tx_name, f2.tx_rx.port.rx_name = p2.name, p1.name
@@ -33,37 +28,45 @@ def test_udp_unidirectional():
     # configure packet size, rate and duration for both flows
     f1.size.fixed, f2.size.fixed = 128, 256
     pkt_count=500
-    pps=100
+    pps=50
     for f in cfg.flows:
         # send pkt_count packets and stop
         f.duration.fixed_packets.packets = pkt_count
         # send pps packets per second
         f.rate.pps = pps
+        # enable flow metrics
+        f.metrics.enable = True
 
-     # configure packet with Ethernet, IPv4 and UDP headers for both flows
+    # configure packet with Ethernet, IPv4 and UDP headers for both flows
     eth1, ip1, udp1 = f1.packet.ethernet().ipv4().udp()
     eth2, ip2, udp2 = f2.packet.ethernet().ipv4().udp()
-
+    
     # set source and destination MAC addresses
     eth1.src.value, eth1.dst.value = "00:AA:00:00:04:00", "00:AA:00:00:00:AA"
     eth2.src.value, eth2.dst.value = "00:AA:00:00:00:AA", "00:AA:00:00:04:00"
-
+    
     # set source and destination IPv4 addresses
     ip1.src.value, ip1.dst.value = "10.0.0.1", "10.0.0.2"
     ip2.src.value, ip2.dst.value = "10.0.0.2", "10.0.0.1"
-
+    
     # set incrementing port numbers as source UDP ports
-    udp1.src_port.increment.start = 5000
-    udp1.src_port.increment.step = 2
-    udp1.src_port.increment.count = 10
+    udp1.src_port.increment.start = 32768
+    udp1.src_port.increment.step = 53
+    udp1.src_port.increment.count = 100
 
-    udp2.src_port.increment.start = 6000
-    udp2.src_port.increment.step = 4
-    udp2.src_port.increment.count = 10
+    udp2.src_port.increment.start = 32768
+    udp2.src_port.increment.step = 47
+    udp2.src_port.increment.count = 100
 
-    # assign list of port numbers as destination UDP ports
-    udp1.dst_port.values = [4000, 4044, 4060, 4074]
-    udp2.dst_port.values = [8000, 8044, 8060, 8074, 8082, 8084]
+    # set incrementing port numbers as destination UDP ports
+    udp1.dst_port.increment.start = 1024
+    udp1.dst_port.increment.step = 67
+    udp1.dst_port.increment.count = 100
+
+    udp2.dst_port.increment.start = 1024
+    udp2.dst_port.increment.step = 71
+    udp2.dst_port.increment.count = 100
+
 
     print("Pushing traffic configuration ...")
     api.set_config(cfg)
@@ -73,9 +76,9 @@ def test_udp_unidirectional():
     ts.state = ts.START
     api.set_transmit_state(ts)
 
-    print("Checking metrics on all configured ports ...")
-    print("Expected\tTotal Tx\tTotal Rx")
-    assert wait_for(lambda: metrics_ok(api, cfg)), "Metrics validation failed!"
+    print("Checking metrics on all configured flows ...")
+    print("Flow Name\tExpected\tCurrent Tx\tCurrent Rx\tTx Rate\tRx Rate")
+    assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count / pps * 2), "Metrics validation failed!"
 
     print("Test passed !")
 
@@ -98,34 +101,28 @@ def metrics_ok(api, cfg):
 
     return expected == total_tx and total_rx >= expected
 
-
-def captures_ok(api, cfg):
-    import dpkt
-
-    print("Checking captured packets on all configured ports ...")
-    print("Port Name\tExpected\tUDP packets")
-
-    result = []
-    for p in cfg.ports:
-        exp, act = 1000, 0
-        # create capture request and filter based on port name
-        req = api.capture_request()
-        req.port_name = p.name
-        # fetch captured pcap bytes and feed it to pcap parser dpkt
-        pcap = dpkt.pcapng.Reader(api.get_capture(req))
-        for _, buf in pcap:
-            # check if current packet is a valid UDP packet
-            eth = dpkt.ethernet.Ethernet(buf)
-            if isinstance(eth.data.data, dpkt.udp.UDP):
-                act += 1
-
-        print("%s\t\t%d\t\t%d" % (p.name, exp, act))
-        result.append(exp == act)
-
-    return all(result)
+def flow_metrics_ok(api, cfg):
+    # expectations per flow
+    FlowExpectedDict = {}
+    for f in cfg.flows:
+        FlowExpectedDict.update({f.name: {'expected_packets': f.duration.fixed_packets.packets}})
+    # create a flow metrics request
+    req = api.metrics_request()
+    req.flow.flow_names = [f.name for f in cfg.flows]
+    
+    # fetch metrics
+    res = api.get_metrics(req)
+    completed = True # will check if there are any flows that are still running below
+    for fm in res.flow_metrics:
+        expected = FlowExpectedDict[fm.name]['expected_packets']
+        print("%s\t\t%d\t\t%d\t\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate))
+        if expected != fm.frames_tx or fm.frames_rx < fm.frames_tx:
+            completed = False
+    
+    return completed
 
 
-def wait_for(func, timeout=60, interval=0.2):
+def wait_for(func, timeout=10, interval=0.2):
     """
     Keeps calling the `func` until it returns true or `timeout` occurs
     every `interval` seconds.

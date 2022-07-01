@@ -1,2 +1,2 @@
-snappi==0.7.37
-pytest==6.0.1
+snappi==0.7.41
+pytest==6.2.5
