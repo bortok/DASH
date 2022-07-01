@@ -22,14 +22,14 @@ f1.tx_rx.port.tx_name, f1.tx_rx.port.rx_name = p1.name, p2.name
 f2.tx_rx.port.tx_name, f2.tx_rx.port.rx_name = p2.name, p1.name
 
 # how many packets to send
-pkt_count_max=70
+pkt_count_max=100
 # at what rate
 pps=10
 
 # configure packet size, rate and duration for both flows
 f1.size.fixed, f2.size.fixed = 128, 256
 # send pkt_count packets and stop
-f1.duration.fixed_packets.packets, f2.duration.fixed_packets.packets = pkt_count_max, pkt_count_max - 50
+f1.duration.fixed_packets.packets, f2.duration.fixed_packets.packets = pkt_count_max, pkt_count_max - 30
 # send pps packets per second
 f1.rate.pps, f2.rate.pps = pps, pps
 # enable flow metrics
