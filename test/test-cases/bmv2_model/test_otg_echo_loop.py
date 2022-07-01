@@ -1,7 +1,9 @@
+"""
+This test package verifies the following:
+- P4 switch shall echo packets back on the same interface it receives them on
+- No packets should be modified as they are echoed
+"""
 import snappi
-
-pkt_count=100
-pps=10
 
 # create a new API instance where location points to controller
 api = snappi.api(location="https://localhost", verify=False)
@@ -19,15 +21,19 @@ f1, f2 = cfg.flows.flow(name="p1->p2").flow(name="p2->p1")
 f1.tx_rx.port.tx_name, f1.tx_rx.port.rx_name = p1.name, p2.name
 f2.tx_rx.port.tx_name, f2.tx_rx.port.rx_name = p2.name, p1.name
 
+# how many packets to send
+pkt_count_max=200
+# at what rate
+pps=10
+
 # configure packet size, rate and duration for both flows
 f1.size.fixed, f2.size.fixed = 128, 256
-for f in cfg.flows:
-    # send pkt_count packets and stop
-    f.duration.fixed_packets.packets = pkt_count
-    # send pps packets per second
-    f.rate.pps = pps
-    # enable flow metrics
-    f.metrics.enable = True
+# send pkt_count packets and stop
+f1.duration.fixed_packets.packets, f2.duration.fixed_packets.packets = pkt_count_max, pkt_count_max - 50
+# send pps packets per second
+f1.rate.pps, f2.rate.pps = pps, pps
+# enable flow metrics
+f1.metrics.enable, f2.metrics.enable = True, True
 
 # configure packet with Ethernet, IPv4 and UDP headers for both flows
 eth1, ip1, udp1 = f1.packet.ethernet().ipv4().udp()
@@ -80,7 +86,7 @@ def test_udp_bidirectional_ports():
     for p in cfg.ports:
         port_metrics_header += "Tx %s\tRx %s\t"%(p.name, p.name)
     print(port_metrics_header)
-    assert wait_for(lambda: port_metrics_ok(api, cfg), pkt_count / pps * 2), "Metrics validation failed!"
+    assert wait_for(lambda: port_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
     
     print("Test passed !")
 
@@ -98,7 +104,7 @@ def test_udp_bidirectional_flows():
 
     print("Checking metrics on all flows ...")
     print("Flow Name\tFrames:\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx")
-    assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count / pps * 2), "Metrics validation failed!"
+    assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
     
     print("Test passed !")
     
