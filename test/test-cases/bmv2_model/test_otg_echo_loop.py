@@ -109,14 +109,13 @@ def port_metrics_ok(api, cfg):
     # fetch port metrics
     res = api.get_metrics(req)
         
-    for pm in res.port_metrics:
-        print("| %s\t\t%d\t\t%d\t%d" % (pm.name, PortExpectedDict[pm.name]['frames_expected'], pm.frames_tx, pm.frames_rx), end="\t")
-
-    print()
     completed = True # will check if there are any flows that are still running below
     for pm in res.port_metrics:
-        pm.frames_rx < PortExpectedDict[pm.name]['frames_expected']
-        completed = False
+        print("| %s\t\t%d\t\t%d\t%d" % (pm.name, PortExpectedDict[pm.name]['frames_expected'], pm.frames_tx, pm.frames_rx), end="\t")
+        if pm.frames_rx < PortExpectedDict[pm.name]['frames_expected']:
+            completed = False
+
+    print()
 
     return completed
 
