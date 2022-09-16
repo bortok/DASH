@@ -16,10 +16,10 @@ p1, p2 = cfg.ports.port(name="p1", location="localhost:5555").port(
 )
 
 # add two traffic flows
-f1, f2 = cfg.flows.flow(name="p1->p2").flow(name="p2->p1")
+f1, f2 = cfg.flows.flow(name="p1").flow(name="p2")
 # and assign source and destination ports for each
-f1.tx_rx.port.tx_name, f1.tx_rx.port.rx_name = p1.name, p2.name
-f2.tx_rx.port.tx_name, f2.tx_rx.port.rx_name = p2.name, p1.name
+f1.tx_rx.port.tx_name, f1.tx_rx.port.rx_name = p1.name, p1.name
+f2.tx_rx.port.tx_name, f2.tx_rx.port.rx_name = p2.name, p2.name
 
 # how many packets to send
 pkt_count_max=100
@@ -89,6 +89,13 @@ def test_echo_ports():
     print(port_metrics_header)
     assert wait_for(lambda: port_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
     
+    ts.state = ts.START
+    api.set_transmit_state(ts)
+
+    print("Checking metrics on all flows ...")
+    print("Flow Name\tFrames:\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx")
+    assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
+
     print("Test passed !")
 
 def port_metrics_ok(api, cfg):
@@ -117,6 +124,26 @@ def port_metrics_ok(api, cfg):
 
     print()
 
+    return completed
+
+def flow_metrics_ok(api, cfg):
+    # expectations per flow and in total
+    FlowExpectedDict = {}
+    for f in cfg.flows:
+        FlowExpectedDict.update({f.name: {'frames_expected': f.duration.fixed_packets.packets}})
+    # create a flow metrics request
+    req = api.metrics_request()
+    req.flow.flow_names = [f.name for f in cfg.flows]
+    
+    # fetch metrics
+    res = api.get_metrics(req)
+    completed = True # will check if there are any flows that are still running below
+    for fm in res.flow_metrics:
+        expected = FlowExpectedDict[fm.name]['frames_expected']
+        print("%s\t\t\t%d\t\t\t%d\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate))
+        if expected != fm.frames_tx or fm.frames_rx < fm.frames_tx:
+            completed = False
+    
     return completed
 
 def wait_for(func, timeout=10, interval=0.2):
