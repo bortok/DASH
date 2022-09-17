@@ -73,7 +73,8 @@ def test_echo_ports():
     """
     This test does following:
     - Send packets from a port at a specified rate
-    - Validate that all packets were echoed back to the same port
+    - Validate that all packets were echoed back to the same port via port frame counters
+    Note! This test doesn't check these were the packets we sent. It would also count other packets
     """
     print("")
     print("Starting transmit...")
@@ -89,13 +90,25 @@ def test_echo_ports():
     print(port_metrics_header)
     assert wait_for(lambda: port_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
     
+    print("Test passed !")
+
+def test_echo_flows():
+    """
+    This test does following:
+    - Send packets from a port at a specified rate
+    - Validate that all packets were echoed back to the same port via flow frame counters
+    This test counts only packets that belong to flows we expect to receive on the port
+    """
+    print("")
+    print("Starting transmit...")
+    ts = api.transmit_state()
     ts.state = ts.START
     api.set_transmit_state(ts)
 
     print("Checking metrics on all flows ...")
     flow_metrics_header = ""
     for p in cfg.flows:
-        flow_metrics_header += "| Flow Name\tFrames:\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx\t"
+        flow_metrics_header += "| Flow\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx\t"
     print(flow_metrics_header)
     assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
 
@@ -143,7 +156,7 @@ def flow_metrics_ok(api, cfg):
     completed = True # will check if there are any flows that are still running below
     for fm in res.flow_metrics:
         expected = FlowExpectedDict[fm.name]['frames_expected']
-        print("| %s\t\t\t%d\t\t\t%d\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate), end="\t")
+        print("| %s\t\t%d\t\t%d\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate), end="\t")
         if expected != fm.frames_tx or fm.frames_rx < fm.frames_tx:
             completed = False
     
