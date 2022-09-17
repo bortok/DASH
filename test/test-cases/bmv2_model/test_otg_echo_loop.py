@@ -93,7 +93,10 @@ def test_echo_ports():
     api.set_transmit_state(ts)
 
     print("Checking metrics on all flows ...")
-    print("Flow Name\tFrames:\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx")
+    flow_metrics_header = ""
+    for p in cfg.flows:
+        flow_metrics_header += "| Flow Name\tFrames:\tExpected\tCurrent\tTx\tRx\tRate:\tTx\tRx\t"
+    print(flow_metrics_header)
     assert wait_for(lambda: flow_metrics_ok(api, cfg), pkt_count_max / pps * 2), "Metrics validation failed!"
 
     print("Test passed !")
@@ -140,10 +143,12 @@ def flow_metrics_ok(api, cfg):
     completed = True # will check if there are any flows that are still running below
     for fm in res.flow_metrics:
         expected = FlowExpectedDict[fm.name]['frames_expected']
-        print("%s\t\t\t%d\t\t\t%d\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate))
+        print("| %s\t\t\t%d\t\t\t%d\t%d\t\t%d\t%d" % (fm.name, expected, fm.frames_tx, fm.frames_rx, fm.frames_tx_rate, fm.frames_rx_rate), end="\t")
         if expected != fm.frames_tx or fm.frames_rx < fm.frames_tx:
             completed = False
     
+    print()
+
     return completed
 
 def wait_for(func, timeout=10, interval=0.2):
